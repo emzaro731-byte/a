@@ -1,18 +1,26 @@
--- V9 PostgreSQL foundation: Auth sessions, RLS-backed data, storage metadata,
--- realtime notifications, function registry and background jobs.
+-- PostgreSQL foundation for the self-hosted Supabase-compatible API.
 CREATE EXTENSION IF NOT EXISTS pgcrypto;
 CREATE EXTENSION IF NOT EXISTS vector;
 
 CREATE TABLE IF NOT EXISTS sb_users (
-  id uuid PRIMARY KEY DEFAULT gen_random_uuid(), email text UNIQUE NOT NULL,
-  name text NOT NULL DEFAULT '', password_hash text NOT NULL,
-  email_verified boolean NOT NULL DEFAULT false, created_at timestamptz NOT NULL DEFAULT now(), updated_at timestamptz NOT NULL DEFAULT now()
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(), email text UNIQUE NOT NULL, name text NOT NULL DEFAULT '',
+  password_hash text NOT NULL, email_verified boolean NOT NULL DEFAULT false,
+  created_at timestamptz NOT NULL DEFAULT now(), updated_at timestamptz NOT NULL DEFAULT now()
 );
 CREATE TABLE IF NOT EXISTS sb_sessions (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(), user_id uuid NOT NULL REFERENCES sb_users(id) ON DELETE CASCADE,
-  refresh_token_hash text UNIQUE NOT NULL, expires_at timestamptz NOT NULL, revoked_at timestamptz, created_at timestamptz NOT NULL DEFAULT now()
+  refresh_token_hash text UNIQUE NOT NULL, expires_at timestamptz NOT NULL, revoked_at timestamptz,
+  created_at timestamptz NOT NULL DEFAULT now()
 );
 CREATE INDEX IF NOT EXISTS sb_sessions_user_idx ON sb_sessions(user_id);
+
+CREATE TABLE IF NOT EXISTS sb_email_tokens (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(), user_id uuid NOT NULL REFERENCES sb_users(id) ON DELETE CASCADE,
+  token_hash text UNIQUE NOT NULL, kind text NOT NULL CHECK(kind IN ('verify','reset')),
+  expires_at timestamptz NOT NULL, used_at timestamptz, created_at timestamptz NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS sb_email_tokens_user_idx ON sb_email_tokens(user_id, kind);
+
 CREATE TABLE IF NOT EXISTS sb_data (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(), owner_id uuid NOT NULL REFERENCES sb_users(id) ON DELETE CASCADE,
   table_name text NOT NULL, row_data jsonb NOT NULL DEFAULT '{}'::jsonb,
@@ -26,12 +34,18 @@ CREATE POLICY sb_data_owner_policy ON sb_data
   USING (owner_id = NULLIF(current_setting('app.user_id', true), '')::uuid)
   WITH CHECK (owner_id = NULLIF(current_setting('app.user_id', true), '')::uuid);
 
+CREATE TABLE IF NOT EXISTS sb_storage_buckets (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(), name text UNIQUE NOT NULL,
+  is_public boolean NOT NULL DEFAULT false, created_at timestamptz NOT NULL DEFAULT now()
+);
 CREATE TABLE IF NOT EXISTS sb_storage_objects (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(), owner_id uuid NOT NULL REFERENCES sb_users(id) ON DELETE CASCADE,
-  bucket text NOT NULL, object_name text NOT NULL, mime text NOT NULL DEFAULT 'application/octet-stream',
-  size_bytes bigint NOT NULL DEFAULT 0, storage_key text NOT NULL UNIQUE, is_public boolean NOT NULL DEFAULT false,
+  bucket text NOT NULL REFERENCES sb_storage_buckets(name) ON UPDATE CASCADE,
+  object_name text NOT NULL, mime text NOT NULL DEFAULT 'application/octet-stream', size_bytes bigint NOT NULL DEFAULT 0,
+  storage_key text NOT NULL UNIQUE, is_public boolean NOT NULL DEFAULT false,
   created_at timestamptz NOT NULL DEFAULT now(), UNIQUE(owner_id, bucket, object_name)
 );
+CREATE INDEX IF NOT EXISTS sb_storage_bucket_name_idx ON sb_storage_objects(bucket, object_name);
 ALTER TABLE sb_storage_objects ENABLE ROW LEVEL SECURITY;
 DROP POLICY IF EXISTS sb_storage_owner_policy ON sb_storage_objects;
 CREATE POLICY sb_storage_owner_policy ON sb_storage_objects
@@ -39,7 +53,8 @@ CREATE POLICY sb_storage_owner_policy ON sb_storage_objects
   WITH CHECK (owner_id = NULLIF(current_setting('app.user_id', true), '')::uuid);
 
 CREATE TABLE IF NOT EXISTS sb_functions (
-  name text PRIMARY KEY, code text NOT NULL, enabled boolean NOT NULL DEFAULT true, updated_at timestamptz NOT NULL DEFAULT now()
+  name text PRIMARY KEY, code text NOT NULL, enabled boolean NOT NULL DEFAULT true,
+  updated_at timestamptz NOT NULL DEFAULT now()
 );
 CREATE TABLE IF NOT EXISTS sb_jobs (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(), user_id uuid REFERENCES sb_users(id) ON DELETE CASCADE,
@@ -49,16 +64,29 @@ CREATE TABLE IF NOT EXISTS sb_jobs (
   created_at timestamptz NOT NULL DEFAULT now(), updated_at timestamptz NOT NULL DEFAULT now()
 );
 CREATE INDEX IF NOT EXISTS sb_jobs_queue_idx ON sb_jobs(status, created_at);
+
 CREATE TABLE IF NOT EXISTS sb_audit_log (
   id bigserial PRIMARY KEY, user_id uuid, action text NOT NULL, resource text NOT NULL,
   metadata jsonb NOT NULL DEFAULT '{}'::jsonb, created_at timestamptz NOT NULL DEFAULT now()
 );
 CREATE INDEX IF NOT EXISTS sb_audit_user_idx ON sb_audit_log(user_id, created_at DESC);
 
+CREATE TABLE IF NOT EXISTS sb_embeddings (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(), owner_id uuid NOT NULL REFERENCES sb_users(id) ON DELETE CASCADE,
+  namespace text NOT NULL, content text NOT NULL, metadata jsonb NOT NULL DEFAULT '{}'::jsonb,
+  embedding vector(1536), created_at timestamptz NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS sb_embeddings_owner_namespace_idx ON sb_embeddings(owner_id, namespace);
+
 CREATE OR REPLACE FUNCTION sb_touch_updated_at() RETURNS trigger LANGUAGE plpgsql AS $$
 BEGIN NEW.updated_at = now(); RETURN NEW; END $$;
 DROP TRIGGER IF EXISTS sb_data_touch ON sb_data;
 CREATE TRIGGER sb_data_touch BEFORE UPDATE ON sb_data FOR EACH ROW EXECUTE FUNCTION sb_touch_updated_at();
+DROP TRIGGER IF EXISTS sb_jobs_touch ON sb_jobs;
+CREATE TRIGGER sb_jobs_touch BEFORE UPDATE ON sb_jobs FOR EACH ROW EXECUTE FUNCTION sb_touch_updated_at();
+DROP TRIGGER IF EXISTS sb_users_touch ON sb_users;
+CREATE TRIGGER sb_users_touch BEFORE UPDATE ON sb_users FOR EACH ROW EXECUTE FUNCTION sb_touch_updated_at();
+
 CREATE OR REPLACE FUNCTION sb_notify_data_change() RETURNS trigger LANGUAGE plpgsql AS $$
 DECLARE payload json;
 BEGIN
