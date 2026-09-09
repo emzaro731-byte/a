@@ -1,129 +1,118 @@
-# My AI API — v3
+# My AI API — v4
 
-A self-hosted AI API for Flutter with chat, image, video, and music generation. Chat runs through Ollama; media requests are routed to local/self-hosted generator services, so the API can stay independent of a commercial AI provider.
+A self-hosted AI gateway for Flutter with ChatGPT-style chat, streaming, model routing, image/video/music generation, API-key authentication, rate limiting, health checks, and GPU deployment support.
 
-## Features
+## v4 upgrades
 
-- OpenAI-style `/v1/chat/completions`
-- Streaming chat with SSE
-- Fast/reasoning/coding model routing
-- Image generation
-- Video generation
-- Music generation
-- Media capability discovery
-- API-key authentication and rate limiting
-- Flutter client for chat + media
+- OpenAI-compatible `POST /v1/chat/completions`
+- SSE streaming chat
+- `default`, `fast`, `reasoning`, and `coding` model aliases
+- Model allow-list to prevent arbitrary Ollama model access
+- Production API-key enforcement
+- Request IDs and security response headers
+- Rate limiting
+- Public `/health` and `/ready` endpoints
+- Safer error responses that do not expose backend exception details
+- Image, video, and music gateway endpoints
+- Flutter client support
+- Docker/RunPod-friendly architecture
 
 ## Architecture
 
-Flutter → HTTPS → FastAPI
+Flutter → HTTPS → FastAPI → Ollama / media GPU services
 
-- Chat → Ollama → local open model
-- Images → local image generator
-- Video → local video generator
-- Music → local music generator
+Ollama and the media server should remain private on the Docker network. Only the FastAPI service should be exposed publicly.
 
-The media layer is a gateway: you choose which self-hosted generator/model runs behind each URL. The repository does not bundle multi-gigabyte model weights.
+The repository stores code and configuration, not multi-gigabyte model weights. Models are downloaded onto persistent deployment storage when the services are started.
 
-## Run
+## Production configuration
 
-```bash
-python -m venv .venv
-source .venv/bin/activate
-pip install -r requirements.txt
-uvicorn main:app --host 0.0.0.0 --port 8000
-```
+Copy `.env.example` to `.env` and replace the API key with a long random secret. Keep `.env` out of Git.
 
-Configure `.env.example` before production deployment.
-
-## API
-
-### Chat
-
-`POST /v1/chat/completions`
-
-### Image
-
-`POST /v1/images/generations`
-
-```json
-{"prompt":"cinematic African city at sunset","size":"1024x1024","n":1}
-```
-
-### Video
-
-`POST /v1/videos/generations`
-
-```json
-{"prompt":"a futuristic city above the clouds","duration":5,"width":1024,"height":576}
-```
-
-### Music
-
-`POST /v1/audio/music/generations`
-
-```json
-{"prompt":"Afrobeats instrumental with warm guitar and deep bass","duration":30,"instrumental":true,"bpm":105}
-```
-
-### Capabilities
-
-`GET /v1/media/capabilities`
-
-This tells the Flutter app which media generators are configured.
-
-## Connect local generators
-
-Set these variables:
+Important variables:
 
 ```text
-IMAGE_GENERATOR_URL=...
-VIDEO_GENERATOR_URL=...
-MUSIC_GENERATOR_URL=...
-MEDIA_GENERATOR_TOKEN=...
+AI_API_KEY=your-long-random-secret
+REQUIRE_API_KEY=true
+ALLOWED_MODELS=qwen2.5:3b
+OLLAMA_URL=http://ollama:11434
+RATE_LIMIT_PER_MINUTE=60
 ```
 
-Each configured generator receives the JSON request from the API and should return JSON containing a `data` field or a JSON object with the generated asset URL/result. This keeps the main API independent of a specific image/video/music framework.
+For Docker Compose, the media gateway uses the internal service name:
 
-For a fully local deployment, run the generator models on a GPU server and point the three URLs to those local services. Image/video/music models can require substantially more VRAM and storage than the chat model.
+```text
+IMAGE_GENERATOR_URL=http://media:8100/v1/images/generations
+VIDEO_GENERATOR_URL=http://media:8100/v1/videos/generations
+MUSIC_GENERATOR_URL=http://media:8100/v1/audio/music/generations
+```
+
+## Endpoints
+
+### Public operational checks
+
+- `GET /health`
+- `GET /ready`
+
+### Protected AI API
+
+- `GET /v1/models`
+- `GET /v1/config`
+- `POST /v1/chat/completions`
+- `POST /chat`
+- `GET /v1/media/capabilities`
+- `POST /v1/images/generations`
+- `POST /v1/videos/generations`
+- `POST /v1/audio/music/generations`
+
+Send the production key as:
+
+```text
+Authorization: Bearer YOUR_API_KEY
+```
+
+## Chat example
+
+```bash
+curl https://YOUR_DOMAIN/v1/chat/completions \
+  -H 'Authorization: Bearer YOUR_API_KEY' \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "model":"default",
+    "messages":[{"role":"user","content":"Hello!"}],
+    "stream":false
+  }'
+```
 
 ## Flutter
 
-`flutter/ai_service.dart` now includes:
-
-- `chat()`
-- `chatStream()`
-- `models()`
-- `mediaCapabilities()`
-- `generateImage()`
-- `generateVideo()`
-- `generateMusic()`
-
-Example:
+Use the public HTTPS API address in `AiService`:
 
 ```dart
-final ai = AiService(baseUrl: 'https://your-domain.com');
-final image = await ai.generateImage(
-  prompt: 'cinematic Lagos skyline at sunset',
-);
-final video = await ai.generateVideo(
-  prompt: 'a futuristic city flying through clouds',
-  duration: 8,
-);
-final music = await ai.generateMusic(
-  prompt: 'Afrobeats instrumental with warm guitar and deep bass',
-  duration: 30,
-);
+final ai = AiService(baseUrl: 'https://YOUR_DOMAIN');
 ```
 
-## Important
+Do not embed a permanent production API key in a publicly distributed APK. For a public consumer app, add user authentication and server-side quotas/tokens.
 
-Adding endpoints does not itself create the media models. Actual generation requires image, video, and music model runtimes connected to the three generator URLs. This design lets you use self-hosted/open models instead of embedding commercial provider keys in your Flutter APK.
+## GPU deployment
 
-## Security
+The API is designed for a persistent GPU server such as a RunPod Pod. GitHub stores the source and deployment configuration; the GPU machine runs Docker, Ollama, and the media models.
 
-- Use HTTPS in production.
-- Keep `AI_API_KEY` and `MEDIA_GENERATOR_TOKEN` on the server.
-- Never ship permanent server secrets in the APK.
-- Restrict CORS and rate limits.
-- Add authentication and per-user quotas before opening generation to the public.
+Start the stack with:
+
+```bash
+docker compose up -d
+```
+
+Then verify:
+
+```bash
+curl http://localhost:8000/health
+curl http://localhost:8000/ready
+```
+
+Expose FastAPI through HTTPS/reverse proxy and keep ports for Ollama and the media service private.
+
+## Media generation
+
+The API is a gateway and does not magically create media without model runtimes. Actual image/video/music generation requires the configured GPU model services. Check the model licenses before using generated media commercially.
