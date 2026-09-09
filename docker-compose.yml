@@ -32,8 +32,8 @@ services:
         condition: service_started
       media:
         condition: service_started
-    ports:
-      - "8000:8000"
+    expose:
+      - "8000"
     environment:
       POSTGRES_DSN: postgresql://${POSTGRES_USER:-supabase}:${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}@postgres:5432/${POSTGRES_DB:-supabase}
       REFRESH_TOKEN_TTL_SECONDS: ${REFRESH_TOKEN_TTL_SECONDS:-2592000}
@@ -97,9 +97,26 @@ services:
       do [ -n "$$model" ] && ollama pull "$$model"; done'
     restart: "no"
 
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    depends_on:
+      - api
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      API_DOMAIN: ${API_DOMAIN:-localhost}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+
 volumes:
   postgres_data:
   ollama:
   ai_data:
   hf_models:
   media_outputs:
+  caddy_data:
+  caddy_config:
