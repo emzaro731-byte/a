@@ -56,31 +56,45 @@ class AiService {
     return Map<String, dynamic>.from(response.data as Map);
   }
 
-  Future<Map<String, dynamic>> imageStyles() async {
+  Future<List<Map<String, dynamic>>> imageStyles() async {
     final response = await _dio.get('$baseUrl/v1/images/styles', options: Options(headers: _headers()));
-    return Map<String, dynamic>.from(response.data as Map);
+    return List<Map<String, dynamic>>.from(response.data['data'] as List);
   }
 
-  Future<Map<String, dynamic>> generateImage({required String prompt, String? negativePrompt, String size = '1024x1024', int n = 1, int? seed, String style = 'none'}) async {
+  Future<List<Map<String, dynamic>>> imageModels() async {
+    final response = await _dio.get('$baseUrl/v1/images/models', options: Options(headers: _headers()));
+    return List<Map<String, dynamic>>.from(response.data['data'] as List);
+  }
+
+  Future<Map<String, dynamic>> generateImage({required String prompt, String? negativePrompt, String size = '1024x1024', int n = 1, int? seed, String style = 'none', int steps = 30, double guidanceScale = 7.5}) async {
     return _generate('/v1/images/generations', {
       'prompt': prompt,
       if (negativePrompt != null) 'negative_prompt': negativePrompt,
       'size': size,
       'n': n,
       'style': style,
+      'steps': steps,
+      'guidance_scale': guidanceScale,
       if (seed != null) 'seed': seed,
     });
   }
 
-  Future<Map<String, dynamic>> editImage({required Uint8List imageBytes, required String prompt, String? negativePrompt, double strength = 0.65, String style = 'none', int? seed}) async {
+  Future<Map<String, dynamic>> editImage({required Uint8List imageBytes, required String prompt, String? negativePrompt, double strength = 0.65, String style = 'none', int n = 1, int? seed, int steps = 30, double guidanceScale = 7.5}) async {
     return _generate('/v1/images/edits', {
       'prompt': prompt,
       'image': base64Encode(imageBytes),
       if (negativePrompt != null) 'negative_prompt': negativePrompt,
       'strength': strength,
       'style': style,
+      'n': n,
+      'steps': steps,
+      'guidance_scale': guidanceScale,
       if (seed != null) 'seed': seed,
     });
+  }
+
+  Future<Map<String, dynamic>> createVariation({required Uint8List imageBytes, required String prompt, String style = 'none', int? seed}) async {
+    return editImage(imageBytes: imageBytes, prompt: prompt, style: style, strength: 0.45, seed: seed);
   }
 
   Future<Map<String, dynamic>> generateVideo({required String prompt, int duration = 5, int width = 1024, int height = 576, int? seed}) async {
@@ -91,14 +105,10 @@ class AiService {
     return _generate('/v1/audio/music/generations', {'prompt': prompt, 'duration': duration, 'instrumental': instrumental, if (bpm != null) 'bpm': bpm, if (seed != null) 'seed': seed});
   }
 
+  String mediaUrl(String path) => path.startsWith('http') ? path : '$baseUrl${path.startsWith('/') ? '' : '/'}$path';
+
   Future<Map<String, dynamic>> _generate(String path, Map<String, dynamic> data) async {
     final response = await _dio.post('$baseUrl$path', options: Options(headers: _headers()), data: data);
     return Map<String, dynamic>.from(response.data as Map);
   }
 }
-
-// Examples:
-// await ai.generateImage(prompt: 'cinematic Lagos skyline at sunset', style: 'cinematic');
-// await ai.editImage(imageBytes: bytes, prompt: 'turn this into a cinematic poster', style: 'cinematic');
-// await ai.generateVideo(prompt: 'a futuristic city flying through clouds', duration: 8);
-// await ai.generateMusic(prompt: 'Afrobeats instrumental with warm guitar and deep bass', duration: 30);
