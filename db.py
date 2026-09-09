@@ -39,7 +39,48 @@ def init_db():
           mime TEXT NOT NULL, content TEXT NOT NULL, created_at REAL NOT NULL
         );
         CREATE INDEX IF NOT EXISTS idx_files_user ON files(user_id);
+        CREATE TABLE IF NOT EXISTS users (
+          id TEXT PRIMARY KEY, email TEXT UNIQUE NOT NULL, name TEXT NOT NULL,
+          password_hash TEXT NOT NULL, created_at REAL NOT NULL
+        );
+        CREATE INDEX IF NOT EXISTS idx_users_email ON users(email);
+        CREATE TABLE IF NOT EXISTS usage (
+          id INTEGER PRIMARY KEY AUTOINCREMENT, user_id TEXT NOT NULL,
+          kind TEXT NOT NULL, amount INTEGER NOT NULL, created_at REAL NOT NULL
+        );
+        CREATE INDEX IF NOT EXISTS idx_usage_user_time ON usage(user_id, created_at);
         ''')
+
+
+def create_user(email: str, password_hash: str, name: str):
+    uid = uuid.uuid4().hex
+    with _lock, _conn() as c:
+        c.execute("INSERT INTO users(id,email,name,password_hash,created_at) VALUES (?,?,?,?,?)", (uid, email, name or email.split('@')[0], password_hash, time.time()))
+        r = c.execute("SELECT * FROM users WHERE id=?", (uid,)).fetchone()
+        return dict(r)
+
+
+def get_user_by_email(email: str):
+    with _conn() as c:
+        r = c.execute("SELECT * FROM users WHERE email=?", (email,)).fetchone()
+        return dict(r) if r else None
+
+
+def get_user_by_id(user_id: str):
+    with _conn() as c:
+        r = c.execute("SELECT * FROM users WHERE id=?", (user_id,)).fetchone()
+        return dict(r) if r else None
+
+
+def record_usage(user_id: str, kind: str, amount: int = 1):
+    with _lock, _conn() as c:
+        c.execute("INSERT INTO usage(user_id,kind,amount,created_at) VALUES (?,?,?,?)", (user_id, kind[:80], max(1, amount), time.time()))
+
+
+def usage_summary(user_id: str, since: float = 0):
+    with _conn() as c:
+        rows = c.execute("SELECT kind,SUM(amount) AS amount FROM usage WHERE user_id=? AND created_at>=? GROUP BY kind", (user_id, since)).fetchall()
+        return {r["kind"]: int(r["amount"] or 0) for r in rows}
 
 
 def create_conversation(user_id: str, title: str):
@@ -50,11 +91,15 @@ def create_conversation(user_id: str, title: str):
     return cid
 
 
+def conversation_owner(cid: str):
+    with _conn() as c:
+        r = c.execute("SELECT user_id FROM conversations WHERE id=?", (cid,)).fetchone()
+        return r["user_id"] if r else None
+
+
 def list_conversations(user_id: str):
     with _conn() as c:
-        return [dict(r) for r in c.execute(
-            "SELECT id,title,created_at,updated_at FROM conversations WHERE user_id=? ORDER BY updated_at DESC LIMIT 100", (user_id,)
-        )]
+        return [dict(r) for r in c.execute("SELECT id,title,created_at,updated_at FROM conversations WHERE user_id=? ORDER BY updated_at DESC LIMIT 100", (user_id,))]
 
 
 def save_message(cid: str, role: str, content: str):
@@ -66,9 +111,7 @@ def save_message(cid: str, role: str, content: str):
 
 def get_messages(cid: str, limit: int = 100):
     with _conn() as c:
-        return [dict(r) for r in c.execute(
-            "SELECT role,content,created_at FROM messages WHERE conversation_id=? ORDER BY id DESC LIMIT ?", (cid, limit)
-        )][::-1]
+        return [dict(r) for r in c.execute("SELECT role,content,created_at FROM messages WHERE conversation_id=? ORDER BY id DESC LIMIT ?", (cid, limit))][::-1]
 
 
 def add_memory(user_id: str, memory: str):
