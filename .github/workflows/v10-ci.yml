@@ -14,9 +14,19 @@ jobs:
   python:
     runs-on: ubuntu-latest
     timeout-minutes: 10
+    env:
+      AUTH_SECRET: ci-test-secret-0123456789-abcdefghijklmnopqrstuvwxyz
+      AI_API_KEY: ci-test-api-key
+      REQUIRE_API_KEY: false
+      AI_DB_PATH: ${{ github.workspace }}/.ci/ai.db
+      STORAGE_ROOT: ${{ github.workspace }}/.ci/storage
+      CI_STORAGE_ROOT: ${{ github.workspace }}/.ci/storage
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+
+      - name: Prepare writable CI directories
+        run: mkdir -p .ci/storage
 
       - name: Setup Python
         uses: actions/setup-python@v5
@@ -33,6 +43,7 @@ jobs:
             bootstrap.py \
             main.py \
             supabase_v9.py \
+            supabase_compat.py \
             agent.py \
             db.py \
             gateway.py \
@@ -42,3 +53,7 @@ jobs:
 
       - name: Validate migration
         run: test -s migrations/001_supabase_v9.sql
+
+      - name: Import application modules
+        run: |
+          python -c "import auth, db, ai_intelligence, production, agent, gateway, main, bootstrap, supabase_v9, supabase_compat; print('Python imports OK')"
