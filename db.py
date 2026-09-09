@@ -3,15 +3,43 @@ import sqlite3
 import threading
 import time
 import uuid
+from pathlib import Path
 
-DB_PATH = os.getenv("AI_DB_PATH", "/data/ai.db")
+
+def _default_db_path():
+    """Return a writable default for CI/local runs while preserving Docker /data."""
+    configured = os.getenv("AI_DB_PATH")
+    if configured:
+        return configured
+
+    # GitHub-hosted runners cannot write to /data. Keep /data as the
+    # container default, but automatically use the workspace in Actions.
+    if os.getenv("GITHUB_ACTIONS", "").lower() == "true":
+        workspace = os.getenv("GITHUB_WORKSPACE", os.getcwd())
+        return os.path.join(workspace, ".ci", "ai.db")
+
+    return "/data/ai.db"
+
+
+DB_PATH = _default_db_path()
 _lock = threading.Lock()
 
 
 def _conn():
     directory = os.path.dirname(DB_PATH)
     if directory:
-        os.makedirs(directory, exist_ok=True)
+        try:
+            os.makedirs(directory, exist_ok=True)
+        except PermissionError:
+            # Last-resort fallback for local environments where /data is not writable.
+            fallback_root = os.getenv("CI_STORAGE_ROOT") or os.getenv("TMPDIR") or ".ci"
+            DB_PATH_LOCAL = str(Path(fallback_root) / "ai.db")
+            directory = os.path.dirname(DB_PATH_LOCAL)
+            if directory:
+                os.makedirs(directory, exist_ok=True)
+            conn = sqlite3.connect(DB_PATH_LOCAL, check_same_thread=False)
+            conn.row_factory = sqlite3.Row
+            return conn
     conn = sqlite3.connect(DB_PATH, check_same_thread=False)
     conn.row_factory = sqlite3.Row
     return conn
