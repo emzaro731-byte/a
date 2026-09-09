@@ -1,0 +1,12 @@
+name: destiny_ai_sdk
+description: Flutter client SDK for the self-hosted Destiny AI V10 API.
+version: 1.0.0
+publish_to: none
+
+environment:
+  sdk: '>=3.0.0 <4.0.0'
+
+dependencies:
+  flutter:
+    sdk: flutter
+  http: ^1.2.0
