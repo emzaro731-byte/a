@@ -23,10 +23,17 @@ services:
       AI_FAST_MODEL: ${AI_FAST_MODEL:-qwen2.5:3b}
       AI_REASONING_MODEL: ${AI_REASONING_MODEL:-qwen2.5:3b}
       AI_CODING_MODEL: ${AI_CODING_MODEL:-qwen2.5:3b}
+      AI_VISION_MODEL: ${AI_VISION_MODEL:-qwen2.5:3b}
       AI_API_KEY: ${AI_API_KEY:?Set AI_API_KEY in .env before starting}
+      REQUIRE_API_KEY: ${REQUIRE_API_KEY:-true}
+      ALLOWED_MODELS: ${ALLOWED_MODELS:-}
       CORS_ORIGINS: ${CORS_ORIGINS:-*}
       RATE_LIMIT_PER_MINUTE: ${RATE_LIMIT_PER_MINUTE:-60}
-      AI_SYSTEM_PROMPT: ${AI_SYSTEM_PROMPT:-You are a helpful AI assistant.}
+      MAX_CONTEXT_MESSAGES: ${MAX_CONTEXT_MESSAGES:-40}
+      AI_DB_PATH: /data/ai.db
+      AI_SYSTEM_PROMPT: ${AI_SYSTEM_PROMPT:-You are a helpful, accurate, capable AI assistant.}
+    volumes:
+      - ai_data:/data
     command: uvicorn main:app --host 0.0.0.0 --port 8000
 
   media:
@@ -56,14 +63,16 @@ services:
       AI_FAST_MODEL: ${AI_FAST_MODEL:-qwen2.5:3b}
       AI_REASONING_MODEL: ${AI_REASONING_MODEL:-qwen2.5:3b}
       AI_CODING_MODEL: ${AI_CODING_MODEL:-qwen2.5:3b}
+      AI_VISION_MODEL: ${AI_VISION_MODEL:-qwen2.5:3b}
     entrypoint: ["/bin/sh", "-c"]
     command: >-
       'until ollama list >/dev/null 2>&1; do sleep 2; done;
-      for model in "$$AI_MODEL" "$$AI_FAST_MODEL" "$$AI_REASONING_MODEL" "$$AI_CODING_MODEL";
+      for model in "$$AI_MODEL" "$$AI_FAST_MODEL" "$$AI_REASONING_MODEL" "$$AI_CODING_MODEL" "$$AI_VISION_MODEL";
       do [ -n "$$model" ] && ollama pull "$$model"; done'
     restart: "no"
 
 volumes:
   ollama:
+  ai_data:
   hf_models:
   media_outputs:
