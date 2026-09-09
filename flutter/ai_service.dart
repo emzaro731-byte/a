@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:typed_data';
 import 'package:dio/dio.dart';
 
 class AiService {
@@ -55,8 +56,31 @@ class AiService {
     return Map<String, dynamic>.from(response.data as Map);
   }
 
-  Future<Map<String, dynamic>> generateImage({required String prompt, String? negativePrompt, String size = '1024x1024', int n = 1, int? seed}) async {
-    return _generate('/v1/images/generations', {'prompt': prompt, if (negativePrompt != null) 'negative_prompt': negativePrompt, 'size': size, 'n': n, if (seed != null) 'seed': seed});
+  Future<Map<String, dynamic>> imageStyles() async {
+    final response = await _dio.get('$baseUrl/v1/images/styles', options: Options(headers: _headers()));
+    return Map<String, dynamic>.from(response.data as Map);
+  }
+
+  Future<Map<String, dynamic>> generateImage({required String prompt, String? negativePrompt, String size = '1024x1024', int n = 1, int? seed, String style = 'none'}) async {
+    return _generate('/v1/images/generations', {
+      'prompt': prompt,
+      if (negativePrompt != null) 'negative_prompt': negativePrompt,
+      'size': size,
+      'n': n,
+      'style': style,
+      if (seed != null) 'seed': seed,
+    });
+  }
+
+  Future<Map<String, dynamic>> editImage({required Uint8List imageBytes, required String prompt, String? negativePrompt, double strength = 0.65, String style = 'none', int? seed}) async {
+    return _generate('/v1/images/edits', {
+      'prompt': prompt,
+      'image': base64Encode(imageBytes),
+      if (negativePrompt != null) 'negative_prompt': negativePrompt,
+      'strength': strength,
+      'style': style,
+      if (seed != null) 'seed': seed,
+    });
   }
 
   Future<Map<String, dynamic>> generateVideo({required String prompt, int duration = 5, int width = 1024, int height = 576, int? seed}) async {
@@ -74,6 +98,7 @@ class AiService {
 }
 
 // Examples:
-// await ai.generateImage(prompt: 'cinematic Lagos skyline at sunset');
+// await ai.generateImage(prompt: 'cinematic Lagos skyline at sunset', style: 'cinematic');
+// await ai.editImage(imageBytes: bytes, prompt: 'turn this into a cinematic poster', style: 'cinematic');
 // await ai.generateVideo(prompt: 'a futuristic city flying through clouds', duration: 8);
 // await ai.generateMusic(prompt: 'Afrobeats instrumental with warm guitar and deep bass', duration: 30);
