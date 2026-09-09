@@ -66,7 +66,7 @@ class AiService {
     return List<Map<String, dynamic>>.from(response.data['data'] as List);
   }
 
-  Future<Map<String, dynamic>> generateImage({required String prompt, String? negativePrompt, String size = '1024x1024', int n = 1, int? seed, String style = 'none', int steps = 30, double guidanceScale = 7.5}) async {
+  Future<Map<String, dynamic>> generateImage({required String prompt, String? negativePrompt, String size = '1024x1024', int n = 1, int? seed, String style = 'none', int steps = 30, double guidanceScale = 7.5, String? model}) async {
     return _generate('/v1/images/generations', {
       'prompt': prompt,
       if (negativePrompt != null) 'negative_prompt': negativePrompt,
@@ -76,10 +76,11 @@ class AiService {
       'steps': steps,
       'guidance_scale': guidanceScale,
       if (seed != null) 'seed': seed,
+      if (model != null) 'model': model,
     });
   }
 
-  Future<Map<String, dynamic>> editImage({required Uint8List imageBytes, required String prompt, String? negativePrompt, double strength = 0.65, String style = 'none', int n = 1, int? seed, int steps = 30, double guidanceScale = 7.5}) async {
+  Future<Map<String, dynamic>> editImage({required Uint8List imageBytes, required String prompt, String? negativePrompt, double strength = 0.65, String style = 'none', int n = 1, int? seed, int steps = 30, double guidanceScale = 7.5, String? model}) async {
     return _generate('/v1/images/edits', {
       'prompt': prompt,
       'image': base64Encode(imageBytes),
@@ -90,11 +91,19 @@ class AiService {
       'steps': steps,
       'guidance_scale': guidanceScale,
       if (seed != null) 'seed': seed,
+      if (model != null) 'model': model,
     });
   }
 
-  Future<Map<String, dynamic>> createVariation({required Uint8List imageBytes, required String prompt, String style = 'none', int? seed}) async {
-    return editImage(imageBytes: imageBytes, prompt: prompt, style: style, strength: 0.45, seed: seed);
+  Future<Map<String, dynamic>> createVariation({required Uint8List imageBytes, String prompt = 'high quality variation of the source image', String style = 'none', int? seed, String? model}) async {
+    return _generate('/v1/images/variations', {
+      'image': base64Encode(imageBytes),
+      'prompt': prompt,
+      'style': style,
+      'strength': 0.45,
+      if (seed != null) 'seed': seed,
+      if (model != null) 'model': model,
+    });
   }
 
   Future<Map<String, dynamic>> generateVideo({required String prompt, int duration = 5, int width = 1024, int height = 576, int? seed}) async {
