@@ -13,10 +13,14 @@ services:
     restart: unless-stopped
     depends_on:
       - ollama
+      - media
     ports:
       - "8000:8000"
     environment:
       OLLAMA_URL: http://ollama:11434
+      IMAGE_GENERATOR_URL: http://media:8100/v1/images/generations
+      VIDEO_GENERATOR_URL: http://media:8100/v1/videos/generations
+      MUSIC_GENERATOR_URL: http://media:8100/v1/audio/music/generations
       AI_MODEL: ${AI_MODEL:-qwen2.5:3b}
       AI_FAST_MODEL: ${AI_FAST_MODEL:-qwen2.5:3b}
       AI_REASONING_MODEL: ${AI_REASONING_MODEL:-qwen2.5:3b}
@@ -26,6 +30,23 @@ services:
       RATE_LIMIT_PER_MINUTE: ${RATE_LIMIT_PER_MINUTE:-60}
       AI_SYSTEM_PROMPT: ${AI_SYSTEM_PROMPT:-You are a helpful AI assistant.}
     command: uvicorn main:app --host 0.0.0.0 --port 8000
+
+  media:
+    build: ./media-server
+    restart: unless-stopped
+    ports:
+      - "8100:8100"
+    gpus: all
+    environment:
+      HF_HOME: /models
+      TRANSFORMERS_CACHE: /models
+      MEDIA_OUTPUT_DIR: /outputs
+      IMAGE_MODEL: ${IMAGE_MODEL:-stabilityai/stable-diffusion-xl-base-1.0}
+      VIDEO_MODEL: ${VIDEO_MODEL:-THUDM/CogVideoX-2b}
+      MUSIC_MODEL: ${MUSIC_MODEL:-facebook/musicgen-small}
+    volumes:
+      - hf_models:/models
+      - media_outputs:/outputs
 
   model-init:
     image: ollama/ollama:latest
@@ -46,3 +67,5 @@ services:
 
 volumes:
   ollama:
+  hf_models:
+  media_outputs:
