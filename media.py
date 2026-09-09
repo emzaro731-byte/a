@@ -1,5 +1,5 @@
 import os
-from typing import Any, Literal
+from typing import Any
 
 import httpx
 from fastapi import APIRouter, HTTPException
@@ -15,8 +15,8 @@ MEDIA_TOKEN = os.getenv("MEDIA_GENERATOR_TOKEN", "")
 
 class ImageRequest(BaseModel):
     prompt: str = Field(min_length=1, max_length=4000)
-    negative_prompt: str | None = None
-    size: str = "1024x1024"
+    negative_prompt: str | None = Field(default=None, max_length=4000)
+    size: str = Field(default="1024x1024", pattern=r"^\d{3,4}x\d{3,4}$")
     n: int = Field(default=1, ge=1, le=4)
     seed: int | None = None
 
@@ -46,22 +46,16 @@ def _headers() -> dict[str, str]:
 
 async def _generate(url: str, kind: str, payload: dict[str, Any]) -> dict[str, Any]:
     if not url:
-        raise HTTPException(
-            status_code=503,
-            detail=(
-                f"{kind} generation is not configured. Set the corresponding "
-                f"*_GENERATOR_URL to your local generator service."
-            ),
-        )
+        raise HTTPException(status_code=503, detail=f"{kind} generation is not configured")
     try:
         async with httpx.AsyncClient(timeout=900) as client:
             response = await client.post(url, json=payload, headers=_headers())
             response.raise_for_status()
             data = response.json()
     except httpx.HTTPStatusError as exc:
-        raise HTTPException(status_code=502, detail=f"{kind} generator error: {exc.response.text[:1000]}") from exc
-    except Exception as exc:
-        raise HTTPException(status_code=503, detail=f"{kind} generator unavailable: {exc}") from exc
+        raise HTTPException(status_code=502, detail=f"{kind} generator returned an error") from exc
+    except (httpx.RequestError, ValueError) as exc:
+        raise HTTPException(status_code=503, detail=f"{kind} generator is unavailable") from exc
 
     if not isinstance(data, dict):
         raise HTTPException(status_code=502, detail=f"{kind} generator returned invalid JSON")
@@ -71,6 +65,7 @@ async def _generate(url: str, kind: str, payload: dict[str, Any]) -> dict[str, A
 @router.get("/media/capabilities")
 async def media_capabilities() -> dict[str, Any]:
     return {
+        "object": "media.capabilities",
         "image": bool(IMAGE_URL),
         "video": bool(VIDEO_URL),
         "music": bool(MUSIC_URL),
