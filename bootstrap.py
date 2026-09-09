@@ -9,11 +9,13 @@ from auth import TOKEN_TTL_SECONDS, issue_token, login, register, track, verify_
 from db import usage_summary
 from gateway import router as gateway_router
 from supabase_v9 import router as supabase_v9_router
+from elastic_storage import router as elastic_storage_router
 
 app: FastAPI = main.app
-app.version = "10.1.0"
+app.version = "11.0.0"
 app.include_router(supabase_v9_router)
 app.include_router(gateway_router)
+app.include_router(elastic_storage_router)
 DAILY_REQUEST_LIMIT = max(0, int(os.getenv("DAILY_REQUEST_LIMIT", "1000")))
 
 
@@ -26,9 +28,6 @@ class AuthRequest(BaseModel):
 @app.middleware("http")
 async def user_auth_bridge(request: Request, call_next):
     path = request.url.path
-    # Supabase-compatible and gateway routes must retain their Bearer token so
-    # their own authentication can inspect it. Do not rewrite these headers to
-    # the legacy API key format.
     if path.startswith("/auth/") or path.startswith("/supabase/") or path.startswith("/v1/gateway/") or path in {"/health", "/ready", "/docs", "/openapi.json", "/redoc"}:
         return await call_next(request)
 
