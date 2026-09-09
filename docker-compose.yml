@@ -2,8 +2,6 @@ services:
   ollama:
     image: ollama/ollama:latest
     restart: unless-stopped
-    ports:
-      - "11434:11434"
     volumes:
       - ollama:/root/.ollama
     gpus: all
@@ -25,7 +23,7 @@ services:
       AI_FAST_MODEL: ${AI_FAST_MODEL:-qwen2.5:3b}
       AI_REASONING_MODEL: ${AI_REASONING_MODEL:-qwen2.5:3b}
       AI_CODING_MODEL: ${AI_CODING_MODEL:-qwen2.5:3b}
-      AI_API_KEY: ${AI_API_KEY:-change-me}
+      AI_API_KEY: ${AI_API_KEY:?Set AI_API_KEY in .env before starting}
       CORS_ORIGINS: ${CORS_ORIGINS:-*}
       RATE_LIMIT_PER_MINUTE: ${RATE_LIMIT_PER_MINUTE:-60}
       AI_SYSTEM_PROMPT: ${AI_SYSTEM_PROMPT:-You are a helpful AI assistant.}
@@ -34,8 +32,8 @@ services:
   media:
     build: ./media-server
     restart: unless-stopped
-    ports:
-      - "8100:8100"
+    expose:
+      - "8100"
     gpus: all
     environment:
       HF_HOME: /models
