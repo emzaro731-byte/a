@@ -6,17 +6,39 @@ on:
   pull_request:
     branches: [v10-supabase-complete]
 
+concurrency:
+  group: v10-ci-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   python:
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
         with:
           python-version: '3.12'
+
       - name: Install dependencies
         run: pip install -r requirements.txt
-      - name: Compile Python
-        run: python -m py_compile auth.py bootstrap.py main.py supabase_v9.py agent.py db.py
-      - name: Validate migration text
+
+      - name: Compile all application Python modules
+        run: |
+          python -m py_compile \
+            auth.py \
+            bootstrap.py \
+            main.py \
+            supabase_v9.py \
+            agent.py \
+            db.py \
+            gateway.py \
+            ai_intelligence.py \
+            production.py \
+            media.py
+
+      - name: Validate migration
         run: test -s migrations/001_supabase_v9.sql
