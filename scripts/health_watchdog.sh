@@ -4,8 +4,12 @@ set -Eeuo pipefail
 COMPOSE_FILE="${COMPOSE_FILE:-docker-compose.yml}"
 HEALTH_URL="${HEALTH_URL:-http://127.0.0.1/health}"
 LOG_FILE="${WATCHDOG_LOG:-/var/log/destiny-ai-watchdog.log}"
+RESTART_WAIT_SECONDS="${RESTART_WAIT_SECONDS:-10}"
 
-log() { echo "[$(date -u +%Y-%m-%dT%H:%M:%SZ)] $*" | tee -a "$LOG_FILE"; }
+log() {
+  mkdir -p "$(dirname "$LOG_FILE")" 2>/dev/null || true
+  echo "[$(date -u +%Y-%m-%dT%H:%M:%SZ)] $*" | tee -a "$LOG_FILE"
+}
 
 if curl -fsS --max-time 15 "$HEALTH_URL" >/dev/null; then
   log "API healthy."
@@ -14,7 +18,7 @@ fi
 
 log "API health check failed; restarting application stack."
 docker compose -f "$COMPOSE_FILE" up -d --remove-orphans
-sleep 10
+sleep "$RESTART_WAIT_SECONDS"
 
 if curl -fsS --max-time 15 "$HEALTH_URL" >/dev/null; then
   log "API recovered after restart."
