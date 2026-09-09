@@ -10,7 +10,7 @@ from db import usage_summary
 from supabase_v9 import router as supabase_v9_router
 
 app: FastAPI = main.app
-app.version = "9.0.0"
+app.version = "10.0.0"
 app.include_router(supabase_v9_router)
 DAILY_REQUEST_LIMIT = max(0, int(os.getenv("DAILY_REQUEST_LIMIT", "1000")))
 
@@ -24,7 +24,7 @@ class AuthRequest(BaseModel):
 @app.middleware("http")
 async def user_auth_bridge(request: Request, call_next):
     path = request.url.path
-    if path.startswith("/auth/") or path in {"/health", "/ready", "/docs", "/openapi.json", "/redoc"}:
+    if path.startswith("/auth/") or path.startswith("/supabase/") or path in {"/health", "/ready", "/docs", "/openapi.json", "/redoc"}:
         return await call_next(request)
 
     authorization = request.headers.get("Authorization", "")
@@ -72,7 +72,7 @@ async def auth_me(request: Request):
     user = verify_token(authorization[7:].strip())
     if not user:
         raise HTTPException(401, "Invalid or expired token")
-    return {"id": user["id"], "email": user["email"], "name": user["name"]}
+    return user
 
 
 @app.get("/v1/usage", tags=["account"])
