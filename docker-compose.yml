@@ -1,4 +1,20 @@
 services:
+  postgres:
+    image: pgvector/pgvector:pg16
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-supabase}
+      POSTGRES_USER: ${POSTGRES_USER:-supabase}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./migrations:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
   ollama:
     image: ollama/ollama:latest
     restart: unless-stopped
@@ -10,11 +26,17 @@ services:
     build: .
     restart: unless-stopped
     depends_on:
-      - ollama
-      - media
+      postgres:
+        condition: service_healthy
+      ollama:
+        condition: service_started
+      media:
+        condition: service_started
     ports:
       - "8000:8000"
     environment:
+      POSTGRES_DSN: postgresql://${POSTGRES_USER:-supabase}:${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}@postgres:5432/${POSTGRES_DB:-supabase}
+      REFRESH_TOKEN_TTL_SECONDS: ${REFRESH_TOKEN_TTL_SECONDS:-2592000}
       OLLAMA_URL: http://ollama:11434
       IMAGE_GENERATOR_URL: http://media:8100/v1/images/generations
       VIDEO_GENERATOR_URL: http://media:8100/v1/videos/generations
@@ -75,6 +97,7 @@ services:
     restart: "no"
 
 volumes:
+  postgres_data:
   ollama:
   ai_data:
   hf_models:
