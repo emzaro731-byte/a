@@ -37,6 +37,7 @@ services:
     environment:
       POSTGRES_DSN: postgresql://${POSTGRES_USER:-supabase}:${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}@postgres:5432/${POSTGRES_DB:-supabase}
       REFRESH_TOKEN_TTL_SECONDS: ${REFRESH_TOKEN_TTL_SECONDS:-2592000}
+      SUPABASE_SERVICE_ROLE_KEY: ${SUPABASE_SERVICE_ROLE_KEY:?Set SUPABASE_SERVICE_ROLE_KEY in .env}
       OLLAMA_URL: http://ollama:11434
       IMAGE_GENERATOR_URL: http://media:8100/v1/images/generations
       VIDEO_GENERATOR_URL: http://media:8100/v1/videos/generations
