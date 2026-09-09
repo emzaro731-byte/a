@@ -7,9 +7,11 @@ from pydantic import BaseModel, Field
 import main
 from auth import TOKEN_TTL_SECONDS, issue_token, login, register, track, verify_token
 from db import usage_summary
+from supabase_v9 import router as supabase_v9_router
 
 app: FastAPI = main.app
-app.version = "7.0.0"
+app.version = "9.0.0"
+app.include_router(supabase_v9_router)
 DAILY_REQUEST_LIMIT = max(0, int(os.getenv("DAILY_REQUEST_LIMIT", "1000")))
 
 
@@ -30,7 +32,6 @@ async def user_auth_bridge(request: Request, call_next):
         token = authorization[7:].strip()
         user = verify_token(token)
         if user:
-            # Translate a valid user token to the private server API key for the v6 guard.
             headers = [(k, v) for k, v in request.scope.get("headers", []) if k.lower() not in {b"authorization", b"x-user-id"}]
             headers += [(b"authorization", f"Bearer {main.API_KEY}".encode()), (b"x-user-id", user["id"].encode())]
             request.scope["headers"] = headers
