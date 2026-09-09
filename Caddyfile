@@ -1,0 +1,11 @@
+{$API_DOMAIN} {
+    encode gzip zstd
+
+    reverse_proxy api:8000
+
+    header {
+        X-Content-Type-Options "nosniff"
+        X-Frame-Options "DENY"
+        Referrer-Policy "strict-origin-when-cross-origin"
+    }
+}
