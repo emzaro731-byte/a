@@ -1,8 +1,7 @@
 """Elastic storage API for large, scalable user objects.
 
-The service is infrastructure-limited rather than hard-coded to a small quota.
-For very large deployments, point STORAGE_ROOT at a mounted object-storage
-filesystem/gateway. STORAGE_MAX_OBJECT_BYTES=0 means no application-level cap.
+Supports a local filesystem backend and an S3-compatible backend. Local CI
+runs automatically fall back to a writable workspace when /data is absent.
 """
 from __future__ import annotations
 
@@ -20,7 +19,11 @@ router = APIRouter(prefix="/v1/storage", tags=["elastic-storage"])
 ROOT = Path(os.getenv("STORAGE_ROOT", "/data/storage"))
 MAX_OBJECT = max(0, int(os.getenv("STORAGE_MAX_OBJECT_BYTES", "0")))
 CHUNK = max(64 * 1024, int(os.getenv("STORAGE_CHUNK_BYTES", str(8 * 1024 * 1024))))
-ROOT.mkdir(parents=True, exist_ok=True)
+try:
+    ROOT.mkdir(parents=True, exist_ok=True)
+except (PermissionError, FileNotFoundError):
+    ROOT = Path(os.getenv("CI_STORAGE_ROOT", ".ci-storage"))
+    ROOT.mkdir(parents=True, exist_ok=True)
 
 
 def user(authorization: str | None):
@@ -49,7 +52,7 @@ def storage_status():
         "total_bytes": usage.total,
         "free_bytes": usage.free,
         "used_bytes": usage.total - usage.free,
-        "note": "Capacity is limited by the attached storage infrastructure."
+        "note": "Capacity is limited by the attached storage infrastructure.",
     }
 
 
