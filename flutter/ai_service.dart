@@ -10,77 +10,36 @@ class AiService {
 
   Map<String, String> _headers() {
     final headers = <String, String>{'Content-Type': 'application/json'};
-    if (apiKey != null && apiKey!.isNotEmpty) {
-      headers['Authorization'] = 'Bearer $apiKey';
-    }
+    if (apiKey != null && apiKey!.isNotEmpty) headers['Authorization'] = 'Bearer $apiKey';
     return headers;
   }
 
-  Future<String> chat({
-    required List<Map<String, String>> messages,
-    String model = 'default',
-    double temperature = 0.7,
-    int? maxTokens,
-  }) async {
-    final data = <String, dynamic>{
-      'model': model,
-      'messages': messages,
-      'temperature': temperature,
-    };
+  Future<String> chat({required List<Map<String, String>> messages, String model = 'default', double temperature = 0.7, int? maxTokens}) async {
+    final data = <String, dynamic>{'model': model, 'messages': messages, 'temperature': temperature};
     if (maxTokens != null) data['max_tokens'] = maxTokens;
-
-    final response = await _dio.post(
-      '$baseUrl/v1/chat/completions',
-      options: Options(headers: _headers()),
-      data: data,
-    );
+    final response = await _dio.post('$baseUrl/v1/chat/completions', options: Options(headers: _headers()), data: data);
     return response.data['choices'][0]['message']['content'] as String;
   }
 
   Future<List<String>> models() async {
-    final response = await _dio.get(
-      '$baseUrl/v1/models',
-      options: Options(headers: _headers()),
-    );
+    final response = await _dio.get('$baseUrl/v1/models', options: Options(headers: _headers()));
     final items = (response.data['data'] as List).cast<Map<String, dynamic>>();
     return items.map((item) => item['id'] as String).toList();
   }
 
-  Stream<String> chatStream({
-    required List<Map<String, String>> messages,
-    String model = 'default',
-    double temperature = 0.7,
-    int? maxTokens,
-    CancelToken? cancelToken,
-  }) async* {
-    final data = <String, dynamic>{
-      'model': model,
-      'messages': messages,
-      'temperature': temperature,
-      'stream': true,
-    };
+  Stream<String> chatStream({required List<Map<String, String>> messages, String model = 'default', double temperature = 0.7, int? maxTokens, CancelToken? cancelToken}) async* {
+    final data = <String, dynamic>{'model': model, 'messages': messages, 'temperature': temperature, 'stream': true};
     if (maxTokens != null) data['max_tokens'] = maxTokens;
-
-    final response = await _dio.post<ResponseBody>(
-      '$baseUrl/v1/chat/completions',
-      options: Options(
-        headers: _headers(),
-        responseType: ResponseType.stream,
-      ),
-      data: data,
-      cancelToken: cancelToken,
-    );
-
-    final stream = response.data!.stream;
+    final response = await _dio.post<ResponseBody>('$baseUrl/v1/chat/completions', options: Options(headers: _headers(), responseType: ResponseType.stream), data: data, cancelToken: cancelToken);
     var buffer = '';
-    await for (final bytes in stream) {
+    await for (final bytes in response.data!.stream) {
       buffer += utf8.decode(bytes, allowMalformed: true);
       final parts = buffer.split('\n');
       buffer = parts.removeLast();
       for (final line in parts) {
         if (!line.startsWith('data: ')) continue;
         final payload = line.substring(6).trim();
-        if (payload == '[DONE]' || payload.isEmpty) continue;
+        if (payload.isEmpty || payload == '[DONE]') continue;
         final json = jsonDecode(payload) as Map<String, dynamic>;
         final choices = json['choices'] as List?;
         if (choices == null || choices.isEmpty) continue;
@@ -90,12 +49,31 @@ class AiService {
       }
     }
   }
+
+  Future<Map<String, dynamic>> mediaCapabilities() async {
+    final response = await _dio.get('$baseUrl/v1/media/capabilities', options: Options(headers: _headers()));
+    return Map<String, dynamic>.from(response.data as Map);
+  }
+
+  Future<Map<String, dynamic>> generateImage({required String prompt, String? negativePrompt, String size = '1024x1024', int n = 1, int? seed}) async {
+    return _generate('/v1/images/generations', {'prompt': prompt, if (negativePrompt != null) 'negative_prompt': negativePrompt, 'size': size, 'n': n, if (seed != null) 'seed': seed});
+  }
+
+  Future<Map<String, dynamic>> generateVideo({required String prompt, int duration = 5, int width = 1024, int height = 576, int? seed}) async {
+    return _generate('/v1/videos/generations', {'prompt': prompt, 'duration': duration, 'width': width, 'height': height, if (seed != null) 'seed': seed});
+  }
+
+  Future<Map<String, dynamic>> generateMusic({required String prompt, int duration = 30, bool instrumental = true, int? bpm, int? seed}) async {
+    return _generate('/v1/audio/music/generations', {'prompt': prompt, 'duration': duration, 'instrumental': instrumental, if (bpm != null) 'bpm': bpm, if (seed != null) 'seed': seed});
+  }
+
+  Future<Map<String, dynamic>> _generate(String path, Map<String, dynamic> data) async {
+    final response = await _dio.post('$baseUrl$path', options: Options(headers: _headers()), data: data);
+    return Map<String, dynamic>.from(response.data as Map);
+  }
 }
 
 // Examples:
-// final ai = AiService(baseUrl: 'https://your-domain.com');
-// final reply = await ai.chat(
-//   model: 'reasoning',
-//   messages: [{'role': 'user', 'content': 'Explain quantum computing'}],
-// );
-// await for (final token in ai.chatStream(messages: messages)) { print(token); }
+// await ai.generateImage(prompt: 'cinematic Lagos skyline at sunset');
+// await ai.generateVideo(prompt: 'a futuristic city flying through clouds', duration: 8);
+// await ai.generateMusic(prompt: 'Afrobeats instrumental with warm guitar and deep bass', duration: 30);
