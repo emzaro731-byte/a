@@ -1,0 +1,36 @@
+name: AI Model Bootstrap
+
+on:
+  workflow_dispatch:
+    inputs:
+      model:
+        description: 'Ollama model to install on a self-hosted runner'
+        required: false
+        default: 'qwen2.5:3b'
+
+jobs:
+  install-model:
+    # GitHub-hosted runners are temporary. For persistent AI inference,
+    # register a persistent GPU machine as a self-hosted runner.
+    runs-on: [self-hosted, linux, x64]
+    timeout-minutes: 60
+    env:
+      AI_MODEL: ${{ inputs.model }}
+      AI_FAST_MODEL: ${{ inputs.model }}
+      AI_REASONING_MODEL: ${{ inputs.model }}
+      AI_CODING_MODEL: ${{ inputs.model }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install model runtime and pull model
+        shell: bash
+        run: |
+          chmod +x scripts/install_ollama_models.sh
+          ./scripts/install_ollama_models.sh
+
+      - name: Verify model
+        shell: bash
+        run: |
+          ollama list
+          curl -fsS http://127.0.0.1:11434/api/tags
