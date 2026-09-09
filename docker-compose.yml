@@ -26,6 +26,9 @@ services:
       AI_VISION_MODEL: ${AI_VISION_MODEL:-qwen2.5:3b}
       AI_API_KEY: ${AI_API_KEY:?Set AI_API_KEY in .env before starting}
       REQUIRE_API_KEY: ${REQUIRE_API_KEY:-true}
+      AUTH_SECRET: ${AUTH_SECRET:?Set AUTH_SECRET to a random 32+ character secret in .env}
+      AUTH_TOKEN_TTL_SECONDS: ${AUTH_TOKEN_TTL_SECONDS:-604800}
+      DAILY_REQUEST_LIMIT: ${DAILY_REQUEST_LIMIT:-1000}
       CORS_ORIGINS: ${CORS_ORIGINS:-*}
       RATE_LIMIT_PER_MINUTE: ${RATE_LIMIT_PER_MINUTE:-60}
       MAX_CONTEXT_MESSAGES: ${MAX_CONTEXT_MESSAGES:-40}
@@ -33,7 +36,7 @@ services:
       AI_SYSTEM_PROMPT: ${AI_SYSTEM_PROMPT:-You are a helpful, accurate, capable AI assistant.}
     volumes:
       - ai_data:/data
-    command: uvicorn main:app --host 0.0.0.0 --port 8000
+    command: uvicorn bootstrap:app --host 0.0.0.0 --port 8000
 
   media:
     build: ./media-server
