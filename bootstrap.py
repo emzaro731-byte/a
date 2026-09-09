@@ -1,4 +1,3 @@
-import json
 import os
 import time
 
@@ -6,10 +5,11 @@ from fastapi import FastAPI, HTTPException, Request
 from pydantic import BaseModel, Field
 
 import main
-from auth import login, register, track, verify_token
+from auth import TOKEN_TTL_SECONDS, issue_token, login, register, track, verify_token
 from db import usage_summary
 
 app: FastAPI = main.app
+app.version = "7.0.0"
 DAILY_REQUEST_LIMIT = max(0, int(os.getenv("DAILY_REQUEST_LIMIT", "1000")))
 
 
@@ -30,15 +30,13 @@ async def user_auth_bridge(request: Request, call_next):
         token = authorization[7:].strip()
         user = verify_token(token)
         if user:
-            # The v6 API-key guard remains enabled; a valid user token is translated
-            # internally to the server-side API key, never exposed to the client.
+            # Translate a valid user token to the private server API key for the v6 guard.
             headers = [(k, v) for k, v in request.scope.get("headers", []) if k.lower() not in {b"authorization", b"x-user-id"}]
             headers += [(b"authorization", f"Bearer {main.API_KEY}".encode()), (b"x-user-id", user["id"].encode())]
             request.scope["headers"] = headers
             request.state.user = user
             if path.startswith("/v1/") and path not in {"/v1/models", "/v1/config", "/v1/tools"}:
-                today = time.time() - 86400
-                used = sum(usage_summary(user["id"], today).values())
+                used = sum(usage_summary(user["id"], time.time() - 86400).values())
                 if DAILY_REQUEST_LIMIT and used >= DAILY_REQUEST_LIMIT:
                     return main.JSONResponse(status_code=429, content={"error": {"message": "Daily usage limit reached", "type": "quota_error"}})
             response = await call_next(request)
@@ -54,7 +52,7 @@ async def auth_register(body: AuthRequest):
         user = register(body.email, body.password, body.name)
     except ValueError as exc:
         raise HTTPException(400, str(exc)) from exc
-    return {"user": user, "access_token": __import__("auth").issue_token({**user, "password_hash": ""}), "token_type": "bearer"}
+    return {"user": user, "access_token": issue_token(user), "token_type": "bearer", "expires_in": TOKEN_TTL_SECONDS}
 
 
 @app.post("/auth/login", tags=["auth"])
@@ -82,6 +80,5 @@ async def account_usage(request: Request):
     user = verify_token(authorization[7:].strip()) if authorization.startswith("Bearer ") else None
     if not user:
         raise HTTPException(401, "Valid user token required")
-    since = time.time() - 86400
-    usage = usage_summary(user["id"], since)
+    usage = usage_summary(user["id"], time.time() - 86400)
     return {"user_id": user["id"], "period": "24h", "daily_limit": DAILY_REQUEST_LIMIT or None, "used": sum(usage.values()), "by_kind": usage}
