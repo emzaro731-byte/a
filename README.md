@@ -1,103 +1,129 @@
-# My AI API — v2
+# My AI API — v3
 
-A self-hosted AI API for Flutter. It provides an OpenAI-compatible interface while the actual model runs through Ollama on your own machine/server. You do not need an OpenAI API key.
+A self-hosted AI API for Flutter with chat, image, video, and music generation. Chat runs through Ollama; media requests are routed to local/self-hosted generator services, so the API can stay independent of a commercial AI provider.
 
-## What was upgraded
+## Features
 
 - OpenAI-style `/v1/chat/completions`
-- Streaming responses with Server-Sent Events
-- Model routing: `default`, `fast`, `reasoning`, `coding`
-- Configurable system prompt
-- Automatic token/latency usage metadata when Ollama provides it
-- API-key authentication
-- Per-IP rate limiting
-- Health and model discovery endpoints
-- Flutter client with streaming and cancellation support
+- Streaming chat with SSE
+- Fast/reasoning/coding model routing
+- Image generation
+- Video generation
+- Music generation
+- Media capability discovery
+- API-key authentication and rate limiting
+- Flutter client for chat + media
 
 ## Architecture
 
-Flutter → HTTPS → FastAPI → Ollama → local open model
+Flutter → HTTPS → FastAPI
 
-## Run locally
+- Chat → Ollama → local open model
+- Images → local image generator
+- Video → local video generator
+- Music → local music generator
 
-1. Install Ollama from https://ollama.com
-2. Pull a model. For a small local setup:
+The media layer is a gateway: you choose which self-hosted generator/model runs behind each URL. The repository does not bundle multi-gigabyte model weights.
 
-```bash
-ollama pull qwen2.5:3b
-ollama serve
-```
-
-For a stronger server, configure `AI_MODEL`, `AI_REASONING_MODEL`, and `AI_CODING_MODEL` to models that your hardware can run. Bigger models generally need substantially more RAM/VRAM.
-
-3. Install Python dependencies:
+## Run
 
 ```bash
 python -m venv .venv
 source .venv/bin/activate
 pip install -r requirements.txt
-```
-
-4. Configure environment variables using `.env.example`.
-5. Start the API:
-
-```bash
 uvicorn main:app --host 0.0.0.0 --port 8000
 ```
 
-Interactive docs: `http://localhost:8000/docs`
+Configure `.env.example` before production deployment.
 
 ## API
 
-- `GET /health` — service/model health
-- `GET /v1/models` — models available in Ollama
-- `GET /v1/config` — configured model aliases
-- `POST /v1/chat/completions` — normal or streaming chat
-- `POST /chat` — compatibility endpoint
+### Chat
 
-### Model aliases
+`POST /v1/chat/completions`
 
-Send `"model":"fast"`, `"reasoning"`, or `"coding"` and the API maps that alias to the configured local model. You can also send the exact Ollama model name.
+### Image
 
-### Streaming
+`POST /v1/images/generations`
 
-Set `"stream": true` on `/v1/chat/completions`. The API returns SSE chunks compatible with common OpenAI-style clients.
+```json
+{"prompt":"cinematic African city at sunset","size":"1024x1024","n":1}
+```
+
+### Video
+
+`POST /v1/videos/generations`
+
+```json
+{"prompt":"a futuristic city above the clouds","duration":5,"width":1024,"height":576}
+```
+
+### Music
+
+`POST /v1/audio/music/generations`
+
+```json
+{"prompt":"Afrobeats instrumental with warm guitar and deep bass","duration":30,"instrumental":true,"bpm":105}
+```
+
+### Capabilities
+
+`GET /v1/media/capabilities`
+
+This tells the Flutter app which media generators are configured.
+
+## Connect local generators
+
+Set these variables:
+
+```text
+IMAGE_GENERATOR_URL=...
+VIDEO_GENERATOR_URL=...
+MUSIC_GENERATOR_URL=...
+MEDIA_GENERATOR_TOKEN=...
+```
+
+Each configured generator receives the JSON request from the API and should return JSON containing a `data` field or a JSON object with the generated asset URL/result. This keeps the main API independent of a specific image/video/music framework.
+
+For a fully local deployment, run the generator models on a GPU server and point the three URLs to those local services. Image/video/music models can require substantially more VRAM and storage than the chat model.
 
 ## Flutter
 
-`flutter/ai_service.dart` supports normal requests, model discovery, streaming generation, configurable temperature/max tokens, API-key authentication, and request cancellation.
+`flutter/ai_service.dart` now includes:
+
+- `chat()`
+- `chatStream()`
+- `models()`
+- `mediaCapabilities()`
+- `generateImage()`
+- `generateVideo()`
+- `generateMusic()`
 
 Example:
 
 ```dart
 final ai = AiService(baseUrl: 'https://your-domain.com');
-final reply = await ai.chat(
-  model: 'reasoning',
-  messages: [
-    {'role': 'user', 'content': 'Solve this problem step by step.'},
-  ],
+final image = await ai.generateImage(
+  prompt: 'cinematic Lagos skyline at sunset',
+);
+final video = await ai.generateVideo(
+  prompt: 'a futuristic city flying through clouds',
+  duration: 8,
+);
+final music = await ai.generateMusic(
+  prompt: 'Afrobeats instrumental with warm guitar and deep bass',
+  duration: 30,
 );
 ```
 
-For live typing:
+## Important
 
-```dart
-await for (final token in ai.chatStream(messages: messages)) {
-  // Append token to the current assistant message.
-}
-```
-
-## Making it genuinely powerful
-
-The API layer does not magically make a small model equal to a frontier model. Capability depends mainly on the model, inference hardware, context, and additional tools. This architecture lets you upgrade those pieces without rewriting your Flutter app.
-
-Recommended production upgrades are a strong licensed/open model, GPU inference, retrieval-augmented generation (RAG), persistent conversation memory, controlled tool calling, moderation, and user authentication.
+Adding endpoints does not itself create the media models. Actual generation requires image, video, and music model runtimes connected to the three generator URLs. This design lets you use self-hosted/open models instead of embedding commercial provider keys in your Flutter APK.
 
 ## Security
 
 - Use HTTPS in production.
-- Set a strong random `AI_API_KEY`.
-- Restrict `CORS_ORIGINS` instead of `*`.
-- Do not embed a permanent server API key inside a public APK.
-- Put authentication/rate limiting in front of the API for public users.
-- Never commit `.env` or real secrets.
+- Keep `AI_API_KEY` and `MEDIA_GENERATOR_TOKEN` on the server.
+- Never ship permanent server secrets in the APK.
+- Restrict CORS and rate limits.
+- Add authentication and per-user quotas before opening generation to the public.
